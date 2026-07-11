@@ -344,11 +344,12 @@ function NewsCard({ item, t, onOpen }) {
       >
         {item.title}
       </p>
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-xs flex items-center gap-1" style={{ color: T.textMute }}>
-          <ExternalLink size={12} /> {item.source}
+      <div className="flex items-center justify-between mt-1 gap-2">
+        <span className="text-xs flex items-center gap-1 min-w-0" style={{ color: T.textMute }}>
+          <ExternalLink size={12} className="shrink-0" />
+          <span className="truncate">{item.source}</span>
         </span>
-        <span className="text-xs" style={{ color: T.textMute, fontFamily: "'JetBrains Mono', monospace" }}>
+        <span className="text-xs shrink-0" style={{ color: T.textMute, fontFamily: "'JetBrains Mono', monospace" }}>
           {item.time}
         </span>
       </div>
