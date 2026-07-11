@@ -136,7 +136,10 @@ const COPY = {
 // is fetched at runtime in <SixInsiderApp> and <NewsDetailPage>.
 // ---------------------------------------------------------------------
 function timeAgo(dateStr, t) {
-  const diffMs = Date.now() - new Date(dateStr).getTime();
+  if (!dateStr) return "";
+  const parsed = new Date(dateStr).getTime();
+  if (Number.isNaN(parsed)) return "";
+  const diffMs = Date.now() - parsed;
   const mins = Math.floor(diffMs / 60000);
   if (mins < 1) return t.now;
   if (mins < 60) return `${mins}m`;
