@@ -177,6 +177,8 @@ function mapCrewRow(row) {
   };
 }
 
+const STATUS_COLOR = { rumor: T.amber, confirmed: T.emerald, leak: T.rose };
+
 function statusDot(status) {
   return (
     <span
