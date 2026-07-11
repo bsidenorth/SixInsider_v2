@@ -356,13 +356,24 @@ function NewsCard({ item, t, onOpen }) {
   );
 }
 
-function FeedTab({ t, news, loading, error, onOpen }) {
+function FeedTab({ t, news, loading, error, onOpen, lastSyncedAt }) {
   return (
     <div className="px-4 pt-4 pb-4 flex flex-col gap-3">
       <div className="mb-1">
-        <h2 className="text-lg font-bold" style={{ color: T.text }}>
-          {t.feedTitle}
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-bold" style={{ color: T.text }}>
+            {t.feedTitle}
+          </h2>
+          {lastSyncedAt && (
+            <span
+              className="text-[10px] shrink-0"
+              style={{ color: T.textMute, fontFamily: "'JetBrains Mono', monospace" }}
+              title="O feed se atualiza sozinho a cada 90s"
+            >
+              ↻ {lastSyncedAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+          )}
+        </div>
         <p className="text-xs" style={{ color: T.textMute }}>
           {t.feedSub}
         </p>
@@ -916,6 +927,7 @@ function MainShell({ lang, setLang, profile, onLogout }) {
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(true);
   const [newsError, setNewsError] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
 
   const [crews, setCrews] = useState([]);
   const [crewsLoading, setCrewsLoading] = useState(true);
@@ -939,6 +951,7 @@ function MainShell({ lang, setLang, profile, onLogout }) {
         setNewsError(true);
       } else {
         setNews((data || []).map((row) => mapNewsRow(row, t)));
+        setLastSyncedAt(new Date());
       }
       setNewsLoading(false);
     }
@@ -1004,6 +1017,7 @@ function MainShell({ lang, setLang, profile, onLogout }) {
         backgroundColor: T.bg,
         fontFamily: "'Inter', sans-serif",
         position: "relative",
+        overflowX: "hidden",
       }}
     >
       <style>{`
@@ -1053,7 +1067,7 @@ function MainShell({ lang, setLang, profile, onLogout }) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {tab === "feed" && (
-          <FeedTab t={t} news={news} loading={newsLoading} error={newsError} onOpen={openNews} />
+          <FeedTab t={t} news={news} loading={newsLoading} error={newsError} onOpen={openNews} lastSyncedAt={lastSyncedAt} />
         )}
         {tab === "chat" && <ChatTab t={t} lang={lang} news={news} />}
         {tab === "crews" && (
