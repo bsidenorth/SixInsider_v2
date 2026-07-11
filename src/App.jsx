@@ -332,7 +332,16 @@ function NewsCard({ item, t, onOpen }) {
           </span>
         )}
       </div>
-      <p className="text-[15px] leading-snug font-medium" style={{ color: T.text }}>
+      <p
+        className="text-[15px] leading-snug font-medium"
+        style={{
+          color: T.text,
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+        }}
+      >
         {item.title}
       </p>
       <div className="flex items-center justify-between mt-1">
@@ -936,9 +945,16 @@ function MainShell({ lang, setLang, profile, onLogout }) {
     loadNews();
     const onVisible = () => document.visibilityState === "visible" && loadNews();
     document.addEventListener("visibilitychange", onVisible);
+    // Recarrega sozinho a cada 90s — antes só atualizava quando a pessoa
+    // saía e voltava pro app (visibilitychange), então quem ficasse com
+    // a tela aberta nunca via notícia nova aparecer.
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === "visible") loadNews();
+    }, 90000);
     return () => {
       active = false;
       document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(pollInterval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
@@ -1005,29 +1021,31 @@ function MainShell({ lang, setLang, profile, onLogout }) {
 
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 pt-4 pb-3 shrink-0"
+        className="flex items-center justify-between gap-2 px-4 pt-4 pb-3 shrink-0 flex-wrap"
         style={{ backgroundColor: T.bg, borderBottom: `1px solid ${T.borderSoft}` }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <div
-            className="h-7 w-7 rounded flex items-center justify-center"
+            className="h-7 w-7 rounded flex items-center justify-center shrink-0"
             style={{ backgroundColor: T.indigo }}
           >
             <Radio size={14} color="#fff" />
           </div>
-          <div>
+          <div className="min-w-0">
             <p
-              className="text-sm font-extrabold tracking-tight leading-none"
+              className="text-sm font-extrabold tracking-tight leading-none truncate"
               style={{ color: T.text, fontFamily: "'JetBrains Mono', monospace" }}
             >
               SIX<span style={{ color: T.indigo }}>//</span>INSIDER
             </p>
-            <p className="text-[10px] leading-none mt-1" style={{ color: T.textMute }}>
+            <p className="text-[10px] leading-none mt-1 truncate" style={{ color: T.textMute }}>
               {t.tagline}
             </p>
           </div>
         </div>
-        <TrialBadge t={t} profile={profile} />
+        <div className="shrink-0">
+          <TrialBadge t={t} profile={profile} />
+        </div>
       </div>
 
       <TickerBar t={t} news={news} />

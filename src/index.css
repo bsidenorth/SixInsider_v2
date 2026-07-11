@@ -8,3 +8,16 @@ html, body, #root {
   min-height: 100vh;
   background-color: #0a0e1a;
 }
+
+/* Impede que conteúdo mais largo que a viewport (títulos longos, ticker,
+   etc.) force um scroll horizontal — é isso que "desorganiza" a tela
+   quando o zoom do navegador muda. */
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
