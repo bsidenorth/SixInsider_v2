@@ -18,6 +18,9 @@ import {
   ArrowLeft,
   Loader2,
   AlertTriangle,
+  LogOut,
+  Mail,
+  Lock,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------
@@ -84,6 +87,21 @@ const COPY = {
     notFoundDesc: "This link may be broken or the story was removed.",
     backToFeed: "Back to feed",
     now: "now",
+    signInTitle: "Welcome back",
+    signUpTitle: "Create your account",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    signInButton: "Sign in",
+    signUpButton: "Start free trial",
+    switchToSignUp: "New here? Create an account",
+    switchToSignIn: "Already have an account? Sign in",
+    authGenericError: "Something went wrong. Check your details and try again.",
+    checkEmailMsg: "Check your inbox to confirm your email, then sign in.",
+    trialBadgeDays: (n) => `Trial · ${n}d left`,
+    trialBadgeExpired: "Trial ended",
+    premiumBadge: "Premium",
+    logout: "Log out",
+    upgradeCta: "Upgrade now to keep full access.",
   },
   pt: {
     tagline: "Informação antes do trailer sair.",
@@ -127,6 +145,21 @@ const COPY = {
     notFoundDesc: "Esse link pode estar quebrado ou a notícia foi removida.",
     backToFeed: "Voltar ao feed",
     now: "agora",
+    signInTitle: "Bem-vindo de volta",
+    signUpTitle: "Crie sua conta",
+    emailLabel: "E-mail",
+    passwordLabel: "Senha",
+    signInButton: "Entrar",
+    signUpButton: "Começar teste grátis",
+    switchToSignUp: "Novo aqui? Criar uma conta",
+    switchToSignIn: "Já tem conta? Entrar",
+    authGenericError: "Algo deu errado. Confira os dados e tente de novo.",
+    checkEmailMsg: "Confira seu e-mail pra confirmar o cadastro, depois faça login.",
+    trialBadgeDays: (n) => `Teste · ${n}d restantes`,
+    trialBadgeExpired: "Teste encerrado",
+    premiumBadge: "Premium",
+    logout: "Sair",
+    upgradeCta: "Assine agora pra manter o acesso completo.",
   },
 };
 
@@ -147,6 +180,13 @@ function timeAgo(dateStr, t) {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   return `${days}d`;
+}
+
+// Days remaining in the free trial. Returns 0 (not negative) once expired.
+function trialDaysLeft(trialEndsAt) {
+  if (!trialEndsAt) return 0;
+  const diffMs = new Date(trialEndsAt).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diffMs / 86400000));
 }
 
 function mapNewsRow(row, t) {
@@ -243,6 +283,31 @@ function TickerBar({ t, news }) {
   );
 }
 
+const PLATFORM_STYLE = {
+  twitter: { label: "Twitter", color: "#1D9BF0" },
+  x: { label: "Twitter", color: "#1D9BF0" },
+  reddit: { label: "Reddit", color: "#FF4500" },
+  official: { label: "Official", color: "#10B981" },
+};
+
+function PlatformTag({ platform }) {
+  if (!platform) return null;
+  const p = PLATFORM_STYLE[platform.toLowerCase()] ?? { label: platform, color: "#8B93AC" };
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+      style={{
+        color: p.color,
+        backgroundColor: `${p.color}1A`,
+        border: `1px solid ${p.color}40`,
+        fontFamily: "'JetBrains Mono', monospace",
+      }}
+    >
+      {p.label}
+    </span>
+  );
+}
+
 function NewsCard({ item, t, onOpen }) {
   return (
     <div
@@ -254,7 +319,10 @@ function NewsCard({ item, t, onOpen }) {
       style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}
     >
       <div className="flex items-center justify-between">
-        <Badge status={item.status} label={t.statuses[item.status]} />
+        <div className="flex items-center gap-1.5">
+          <Badge status={item.status} label={t.statuses[item.status]} />
+          <PlatformTag platform={item.platform} />
+        </div>
         {item.trending && (
           <span
             className="inline-flex items-center gap-1 text-[10px] font-semibold"
@@ -523,9 +591,11 @@ function Toggle({ checked, onChange }) {
   );
 }
 
-function ProfileTab({ t, lang, setLang }) {
-  const [premium, setPremium] = useState(false);
+function ProfileTab({ t, lang, setLang, profile, onLogout }) {
   const [notifs, setNotifs] = useState({ preorders: true, trailers: true, leaks: true });
+  const isPremium = !!profile?.is_premium;
+  const days = trialDaysLeft(profile?.trial_ends_at);
+  const trialExpired = !isPremium && days <= 0;
 
   return (
     <div className="px-4 pt-4 pb-4 flex flex-col gap-4">
@@ -540,13 +610,13 @@ function ProfileTab({ t, lang, setLang }) {
         >
           <UserRound size={26} color={T.textSoft} />
         </div>
-        <div>
-          <p className="text-sm font-semibold" style={{ color: T.text }}>
-            player_one
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold truncate" style={{ color: T.text }}>
+            {profile?.email ?? "—"}
           </p>
-          <p className="text-xs" style={{ color: T.textMute }}>
-            player@sixinsider.gg
-          </p>
+          <div className="mt-1">
+            <TrialBadge t={t} profile={profile} />
+          </div>
         </div>
       </div>
 
@@ -560,11 +630,11 @@ function ProfileTab({ t, lang, setLang }) {
         <div className="flex items-center gap-2 mb-1">
           <Crown size={16} color={T.amber} />
           <span className="text-sm font-bold" style={{ color: T.text }}>
-            {premium ? t.upgraded : t.premium}
+            {isPremium ? t.upgraded : t.premium}
           </span>
         </div>
         <p className="text-xs mb-3" style={{ color: T.textSoft }}>
-          {t.premiumDesc}
+          {trialExpired ? t.upgradeCta : t.premiumDesc}
         </p>
         <div className="flex items-center justify-between">
           <span style={{ color: T.text, fontFamily: "'JetBrains Mono', monospace" }} className="text-lg font-bold">
@@ -573,14 +643,24 @@ function ProfileTab({ t, lang, setLang }) {
               {t.perMonth}
             </span>
           </span>
-          <button
-            onClick={() => setPremium((p) => !p)}
-            className="text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-1.5"
-            style={{ backgroundColor: premium ? T.emerald : T.indigo, color: "#fff" }}
-          >
-            {premium && <Check size={13} />}
-            {premium ? t.upgraded : t.upgrade}
-          </button>
+          {!isPremium && (
+            <a
+              href={import.meta.env.VITE_PAYMENTS_URL ? `${import.meta.env.VITE_PAYMENTS_URL}/api/v1/checkout/stripe` : "#"}
+              className="text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-1.5"
+              style={{ backgroundColor: T.indigo, color: "#fff" }}
+            >
+              {t.upgrade}
+            </a>
+          )}
+          {isPremium && (
+            <span
+              className="text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-1.5"
+              style={{ backgroundColor: T.emerald, color: "#fff" }}
+            >
+              <Check size={13} />
+              {t.upgraded}
+            </span>
+          )}
         </div>
       </div>
 
@@ -617,6 +697,15 @@ function ProfileTab({ t, lang, setLang }) {
       >
         <Globe size={14} />
         {lang === "en" ? "Switch to Português" : "Switch to English"}
+      </button>
+
+      <button
+        onClick={onLogout}
+        className="flex items-center justify-center gap-2 text-xs font-semibold py-2.5 rounded-full"
+        style={{ backgroundColor: "transparent", color: T.rose, border: `1px solid ${T.rose}40` }}
+      >
+        <LogOut size={14} />
+        {t.logout}
       </button>
     </div>
   );
@@ -704,7 +793,10 @@ function NewsDetailPage({ lang }) {
         {status === "done" && item && (
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <Badge status={item.status} label={t.statuses[item.status]} />
+              <div className="flex items-center gap-1.5">
+                <Badge status={item.status} label={t.statuses[item.status]} />
+                <PlatformTag platform={item.platform} />
+              </div>
               {item.trending && (
                 <span
                   className="inline-flex items-center gap-1 text-[10px] font-semibold"
@@ -753,7 +845,7 @@ function detectInitialLang() {
   return nav.startsWith("pt") ? "pt" : "en";
 }
 
-function MainShell({ lang, setLang }) {
+function MainShell({ lang, setLang, profile, onLogout }) {
   const [tab, setTab] = useState("feed");
   const t = COPY[lang];
   const navigate = useNavigate();
@@ -881,6 +973,7 @@ function MainShell({ lang, setLang }) {
             </p>
           </div>
         </div>
+        <TrialBadge t={t} profile={profile} />
       </div>
 
       <TickerBar t={t} news={news} />
@@ -894,7 +987,7 @@ function MainShell({ lang, setLang }) {
         {tab === "crews" && (
           <CrewsTab t={t} crews={crews} loading={crewsLoading} error={crewsError} />
         )}
-        {tab === "profile" && <ProfileTab t={t} lang={lang} setLang={setLang} />}
+        {tab === "profile" && <ProfileTab t={t} lang={lang} setLang={setLang} profile={profile} onLogout={onLogout} />}
       </div>
 
       {/* Bottom nav — normal flex flow (not absolute), so it never
@@ -932,6 +1025,161 @@ function MainShell({ lang, setLang }) {
   );
 }
 
+function TrialBadge({ t, profile }) {
+  if (!profile) return null;
+  if (profile.is_premium) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full"
+        style={{ color: T.emerald, backgroundColor: `${T.emerald}1A`, border: `1px solid ${T.emerald}40` }}
+      >
+        <Crown size={11} /> {t.premiumBadge}
+      </span>
+    );
+  }
+  const days = trialDaysLeft(profile.trial_ends_at);
+  const expired = days <= 0;
+  const color = expired ? T.rose : T.amber;
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full"
+      style={{ color, backgroundColor: `${color}1A`, border: `1px solid ${color}40` }}
+    >
+      {expired ? t.trialBadgeExpired : t.trialBadgeDays(days)}
+    </span>
+  );
+}
+
+function AuthScreen({ lang, setLang, onAuthed }) {
+  const t = COPY[lang];
+  const [mode, setMode] = useState("signin"); // "signin" | "signup"
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [infoMsg, setInfoMsg] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setInfoMsg("");
+    setLoading(true);
+    try {
+      if (mode === "signin") {
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInError) throw signInError;
+        onAuthed?.();
+      } else {
+        const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+        if (signUpError) throw signUpError;
+        if (data.session) {
+          onAuthed?.();
+        } else {
+          setInfoMsg(t.checkEmailMsg);
+        }
+      }
+    } catch (err) {
+      setError(err.message || t.authGenericError);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="w-full mx-auto flex flex-col items-center justify-center px-6"
+      style={{ maxWidth: 480, minHeight: "100dvh", backgroundColor: T.bg, fontFamily: "'Inter', sans-serif" }}
+    >
+      <div className="w-full flex flex-col gap-5">
+        <div className="flex flex-col items-center gap-2 mb-2">
+          <div className="h-10 w-10 rounded flex items-center justify-center" style={{ backgroundColor: T.indigo }}>
+            <Radio size={18} color="#fff" />
+          </div>
+          <p
+            className="text-base font-extrabold tracking-tight"
+            style={{ color: T.text, fontFamily: "'JetBrains Mono', monospace" }}
+          >
+            SIX<span style={{ color: T.indigo }}>//</span>INSIDER
+          </p>
+          <h1 className="text-sm font-semibold mt-1" style={{ color: T.textSoft }}>
+            {mode === "signin" ? t.signInTitle : t.signUpTitle}
+          </h1>
+        </div>
+
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5" style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}>
+            <Mail size={15} color={T.textMute} />
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t.emailLabel}
+              className="flex-1 bg-transparent text-sm outline-none"
+              style={{ color: T.text }}
+            />
+          </div>
+          <div className="flex items-center gap-2 rounded-xl px-3.5 py-2.5" style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}>
+            <Lock size={15} color={T.textMute} />
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={t.passwordLabel}
+              className="flex-1 bg-transparent text-sm outline-none"
+              style={{ color: T.text }}
+            />
+          </div>
+
+          {error && (
+            <p className="text-xs" style={{ color: T.rose }}>
+              {error}
+            </p>
+          )}
+          {infoMsg && (
+            <p className="text-xs" style={{ color: T.emerald }}>
+              {infoMsg}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="flex items-center justify-center gap-2 text-sm font-semibold py-3 rounded-full mt-1"
+            style={{ backgroundColor: T.indigo, color: "#fff", opacity: loading ? 0.7 : 1 }}
+          >
+            {loading && <Loader2 size={14} className="animate-spin" />}
+            {mode === "signin" ? t.signInButton : t.signUpButton}
+          </button>
+        </form>
+
+        <button
+          onClick={() => {
+            setMode(mode === "signin" ? "signup" : "signin");
+            setError("");
+            setInfoMsg("");
+          }}
+          className="text-xs font-semibold text-center"
+          style={{ color: T.textSoft }}
+        >
+          {mode === "signin" ? t.switchToSignUp : t.switchToSignIn}
+        </button>
+
+        <button
+          onClick={() => setLang(lang === "en" ? "pt" : "en")}
+          className="flex items-center justify-center gap-2 text-xs font-semibold py-2 rounded-full mt-2"
+          style={{ backgroundColor: T.surface, color: T.textMute, border: `1px solid ${T.borderSoft}` }}
+        >
+          <Globe size={12} />
+          {lang === "en" ? "Português" : "English"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SetupNeededScreen() {
   return (
     <div
@@ -955,15 +1203,72 @@ function SetupNeededScreen() {
 
 export default function SixInsiderApp() {
   const [lang, setLang] = useState(detectInitialLang);
+  const [session, setSession] = useState(undefined); // undefined = loading, null = logged out
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Fetch (or lazily create) the row in `public.users` — the REAL table
+  // used by the payment webhook (matched by email, not by auth uid).
+  useEffect(() => {
+    if (!session?.user) {
+      setProfile(null);
+      return;
+    }
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from("users")
+        .select("email, is_premium, trial_ends_at, premium_since")
+        .eq("email", session.user.email)
+        .maybeSingle();
+      if (active) setProfile(data ?? { email: session.user.email, is_premium: false, trial_ends_at: null });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [session]);
 
   if (!isSupabaseConfigured) {
     return <SetupNeededScreen />;
   }
 
+  // Still checking whether there's an existing session — avoid a flash
+  // of the login screen for users who are already authenticated.
+  if (session === undefined) {
+    return (
+      <div
+        className="w-full mx-auto flex items-center justify-center"
+        style={{ maxWidth: 480, minHeight: "100dvh", backgroundColor: T.bg }}
+      >
+        <Loader2 size={22} color={T.textMute} className="animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <AuthScreen lang={lang} setLang={setLang} onAuthed={() => {}} />;
+  }
+
+  const handleLogout = () => supabase.auth.signOut();
+
   return (
     <Routes>
       <Route path="/news/:slug" element={<NewsDetailPage lang={lang} />} />
-      <Route path="*" element={<MainShell lang={lang} setLang={setLang} />} />
+      <Route
+        path="*"
+        element={<MainShell lang={lang} setLang={setLang} profile={profile} onLogout={handleLogout} />}
+      />
     </Routes>
   );
 }
