@@ -385,7 +385,72 @@ function StateMessage({ icon: Icon, text, spin, tone }) {
   );
 }
 
-function ChatTab({ t }) {
+// Builds a chat answer strictly from the real `news` array already
+// loaded from Supabase — no external LLM call, just retrieval over
+// today's feed. Keeps the promise from the PRD: "answers grounded in
+// the updated database", not generic model knowledge.
+function buildGroundedReply(query, news, lang) {
+  const isPt = lang === "pt";
+  const lower = query.toLowerCase();
+
+  if (!news || news.length === 0) {
+    return isPt
+      ? "Ainda não tenho notícia nenhuma na base pra responder isso — o pipeline de coleta ainda não publicou nada."
+      : "I don't have any news in the feed yet to answer that — the ingestion pipeline hasn't published anything.";
+  }
+
+  const confirmed = news.filter((n) => n.status === "confirmed");
+  const leaks = news.filter((n) => n.status === "leak");
+  const rumors = news.filter((n) => n.status === "rumor");
+  const trending = news.filter((n) => n.trending);
+
+  const list = (items, max = 3) => items.slice(0, max).map((n) => `• ${n.title}`).join("\n");
+
+  const wantsDate = /date|data de lan|lançamento|lancamento|release/.test(lower);
+  const wantsConfirmed = /confirm/.test(lower);
+  const wantsLeak = /leak|vazament/.test(lower);
+  const wantsTrending = /trend|em alta/.test(lower);
+  const wantsSummary = /summar|resum/.test(lower);
+
+  if (wantsDate) {
+    const dateItems = news.filter((n) => /date|release|lançamento|lancamento/i.test(`${n.title} ${n.summary || ""}`));
+    if (dateItems.length === 0) {
+      return isPt
+        ? `Nenhuma data oficial confirmada até agora. ${rumors.length} rumor(es) no feed, nenhum menciona data específica.`
+        : `No official date confirmed yet. ${rumors.length} rumor(s) in the feed, none pin down a specific date.`;
+    }
+    return `${isPt ? "Itens que mencionam data/lançamento" : "Items mentioning date/release"}:\n${list(dateItems)}`;
+  }
+
+  if (wantsConfirmed) {
+    if (confirmed.length === 0) {
+      return isPt ? "Nada confirmado oficialmente ainda no feed." : "Nothing officially confirmed in the feed yet.";
+    }
+    return `${isPt ? "Confirmado até agora" : "Confirmed so far"}:\n${list(confirmed)}`;
+  }
+
+  if (wantsLeak) {
+    if (leaks.length === 0) {
+      return isPt ? "Nenhum vazamento registrado no feed agora." : "No leaks logged in the feed right now.";
+    }
+    return `${isPt ? "Vazamentos recentes" : "Recent leaks"}:\n${list(leaks)}`;
+  }
+
+  if (wantsTrending || wantsSummary) {
+    if (trending.length === 0) {
+      return isPt
+        ? `Nada em alta agora. Resumo do feed: ${confirmed.length} confirmado(s), ${leaks.length} vazamento(s), ${rumors.length} rumor(es).`
+        : `Nothing trending right now. Feed summary: ${confirmed.length} confirmed, ${leaks.length} leak(s), ${rumors.length} rumor(s).`;
+    }
+    return `${isPt ? "Em alta agora (cruzado entre fontes)" : "Trending now (cross-referenced across sources)"}:\n${list(trending)}`;
+  }
+
+  return isPt
+    ? `No feed agora: ${confirmed.length} confirmado(s), ${leaks.length} vazamento(s), ${rumors.length} rumor(es). Pergunta sobre "confirmado", "vazamento" ou "data" pra mais detalhes.`
+    : `In the feed right now: ${confirmed.length} confirmed, ${leaks.length} leak(s), ${rumors.length} rumor(s). Ask about "confirmed", "leaks", or "date" for details.`;
+}
+
+function ChatTab({ t, lang, news }) {
   const [messages, setMessages] = useState([
     { role: "ai", text: t.chatSub },
   ]);
@@ -397,17 +462,6 @@ function ChatTab({ t }) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  const reply = (q) => {
-    const lower = q.toLowerCase();
-    if (lower.includes("date") || lower.includes("data")) {
-      return "No official release date is confirmed yet. Current chatter points to a Q4 window, flagged as Rumor status.";
-    }
-    if (lower.includes("confirm")) {
-      return "Confirmed so far: new gameplay footage this quarter, and a teased soundtrack collaboration — both from official Rockstar channels.";
-    }
-    return "Based on today's feed: 2 trending items cross-referenced across Twitter and Reddit, both about map details and audio datamines. Nothing official yet on those.";
-  };
-
   const send = (text) => {
     const q = text ?? input;
     if (!q.trim()) return;
@@ -415,9 +469,9 @@ function ChatTab({ t }) {
     setInput("");
     setTyping(true);
     setTimeout(() => {
-      setMessages((m) => [...m, { role: "ai", text: reply(q) }]);
+      setMessages((m) => [...m, { role: "ai", text: buildGroundedReply(q, news, lang) }]);
       setTyping(false);
-    }, 900);
+    }, 700);
   };
 
   return (
@@ -439,7 +493,7 @@ function ChatTab({ t }) {
               </div>
             )}
             <div
-              className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed"
+              className="max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-line"
               style={
                 m.role === "user"
                   ? { backgroundColor: T.indigo, color: "#fff", borderBottomRightRadius: 4 }
@@ -983,7 +1037,7 @@ function MainShell({ lang, setLang, profile, onLogout }) {
         {tab === "feed" && (
           <FeedTab t={t} news={news} loading={newsLoading} error={newsError} onOpen={openNews} />
         )}
-        {tab === "chat" && <ChatTab t={t} />}
+        {tab === "chat" && <ChatTab t={t} lang={lang} news={news} />}
         {tab === "crews" && (
           <CrewsTab t={t} crews={crews} loading={crewsLoading} error={crewsError} />
         )}
