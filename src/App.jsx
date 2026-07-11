@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Routes, Route, useNavigate, useParams } from "react-router-dom";
-import { supabase } from "./lib/supabaseClient";
+import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
 import {
   Newspaper,
   MessageSquare,
@@ -927,8 +927,33 @@ function MainShell({ lang, setLang }) {
   );
 }
 
+function SetupNeededScreen() {
+  return (
+    <div
+      className="w-full mx-auto flex flex-col items-center justify-center gap-4 px-6 text-center"
+      style={{ maxWidth: 480, minHeight: "100dvh", backgroundColor: T.bg, fontFamily: "'Inter', sans-serif" }}
+    >
+      <AlertTriangle size={32} color={T.amber} />
+      <h1 className="text-base font-bold" style={{ color: T.text }}>
+        Configuração pendente
+      </h1>
+      <p className="text-sm leading-relaxed" style={{ color: T.textSoft }}>
+        As variáveis <code style={{ color: T.indigo }}>VITE_SUPABASE_URL</code> e{" "}
+        <code style={{ color: T.indigo }}>VITE_SUPABASE_ANON_KEY</code> não foram encontradas.
+      </p>
+      <p className="text-xs leading-relaxed" style={{ color: T.textMute }}>
+        Cadastre as duas na Vercel em Project Settings → Environment Variables e faça o redeploy.
+      </p>
+    </div>
+  );
+}
+
 export default function SixInsiderApp() {
   const [lang, setLang] = useState(detectInitialLang);
+
+  if (!isSupabaseConfigured) {
+    return <SetupNeededScreen />;
+  }
 
   return (
     <Routes>
