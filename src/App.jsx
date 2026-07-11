@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Routes, Route, useNavigate, useParams } from "react-router-dom";
+import { supabase } from "./lib/supabaseClient";
 import {
   Newspaper,
   MessageSquare,
@@ -13,6 +15,9 @@ import {
   Globe,
   Check,
   Radio,
+  ArrowLeft,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------
@@ -67,6 +72,18 @@ const COPY = {
     notifTrailers: "Trailer drops",
     notifLeaks: "Code leaks",
     live: "LIVE",
+    loadingNews: "Loading intel...",
+    errorNews: "Couldn't reach the feed. Pull down to try again.",
+    emptyNews: "No intel yet — the ingestion pipeline hasn't published anything.",
+    loadingCrews: "Loading crews...",
+    errorCrews: "Couldn't load crews right now.",
+    emptyCrews: "No crews for this platform yet.",
+    back: "Back",
+    openSource: "Open source",
+    notFoundTitle: "Story not found",
+    notFoundDesc: "This link may be broken or the story was removed.",
+    backToFeed: "Back to feed",
+    now: "now",
   },
   pt: {
     tagline: "Informação antes do trailer sair.",
@@ -98,65 +115,64 @@ const COPY = {
     notifTrailers: "Trailers novos",
     notifLeaks: "Vazamentos de código",
     live: "AO VIVO",
+    loadingNews: "Carregando informações...",
+    errorNews: "Não foi possível carregar o feed. Tente novamente.",
+    emptyNews: "Nenhuma notícia ainda — o pipeline de coleta não publicou nada.",
+    loadingCrews: "Carregando crews...",
+    errorCrews: "Não foi possível carregar as crews agora.",
+    emptyCrews: "Nenhuma crew para essa plataforma ainda.",
+    back: "Voltar",
+    openSource: "Abrir fonte",
+    notFoundTitle: "Notícia não encontrada",
+    notFoundDesc: "Esse link pode estar quebrado ou a notícia foi removida.",
+    backToFeed: "Voltar ao feed",
+    now: "agora",
   },
 };
 
-const NEWS = [
-  {
-    id: 1,
-    status: "confirmed",
-    title: "Rockstar confirms new gameplay footage arriving this quarter",
-    source: "Rockstar Newswire",
-    platform: "official",
-    trending: true,
-    time: "2h",
-  },
-  {
-    id: 2,
-    status: "leak",
-    title: "Datamined audio files suggest a third playable city district",
-    source: "r/GTA6",
-    platform: "reddit",
-    trending: true,
-    time: "5h",
-  },
-  {
-    id: 3,
-    status: "rumor",
-    title: "Insider claims pre-order bonuses to be revealed alongside trailer 3",
-    source: "@insiderGTA",
-    platform: "twitter",
-    trending: false,
-    time: "9h",
-  },
-  {
-    id: 4,
-    status: "confirmed",
-    title: "Official soundtrack collaboration teased on Rockstar's socials",
-    source: "Rockstar Games",
-    platform: "official",
-    trending: false,
-    time: "1d",
-  },
-  {
-    id: 5,
-    status: "rumor",
-    title: "Voice actor's since-deleted post hints at expanded map size",
-    source: "r/GTA6",
-    platform: "reddit",
-    trending: false,
-    time: "1d",
-  },
-];
+// ---------------------------------------------------------------------
+// Real data lives in Supabase (`news` and `crews` tables — see
+// sixinsider_schema.sql). No more hardcoded arrays: everything below
+// is fetched at runtime in <SixInsiderApp> and <NewsDetailPage>.
+// ---------------------------------------------------------------------
+function timeAgo(dateStr, t) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return t.now;
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
 
-const CREWS = [
-  { id: 1, name: "Vice Runners PS5", platform: "ps5", members: 4820, desc: "Daily leak discussion & theorycrafting." },
-  { id: 2, name: "Leonida Crew Xbox", platform: "xbox", members: 2310, desc: "Xbox-focused, weekly watch parties." },
-  { id: 3, name: "PC Insiders", platform: "pc", members: 6110, desc: "Mod speculation & technical breakdowns." },
-  { id: 4, name: "Night City Radio", platform: "ps5", members: 1290, desc: "Podcast crew covering every drop." },
-];
+function mapNewsRow(row, t) {
+  return {
+    id: row.id,
+    slug: row.slug || row.id,
+    status: row.status,
+    title: row.title,
+    summary: row.summary,
+    content: row.content,
+    source: row.source_platform === "official" ? "Rockstar Newswire" : row.source_url,
+    sourceUrl: row.source_url,
+    platform: row.source_platform,
+    trending: row.is_trending,
+    time: timeAgo(row.published_at, t),
+    publishedAt: row.published_at,
+  };
+}
 
-const STATUS_COLOR = { rumor: T.amber, confirmed: T.emerald, leak: T.rose };
+function mapCrewRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    platform: row.platform,
+    members: row.member_count,
+    desc: row.description,
+    inviteUrl: row.invite_url,
+  };
+}
 
 function statusDot(status) {
   return (
@@ -180,8 +196,9 @@ function Badge({ status, label }) {
   );
 }
 
-function TickerBar({ t }) {
-  const items = NEWS.filter((n) => n.trending).map((n) => n.title);
+function TickerBar({ t, news }) {
+  const items = news.filter((n) => n.trending).map((n) => n.title);
+  if (items.length === 0) return null;
   const loop = [...items, ...items];
   return (
     <div
@@ -221,10 +238,14 @@ function TickerBar({ t }) {
   );
 }
 
-function NewsCard({ item, t }) {
+function NewsCard({ item, t, onOpen }) {
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-2"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(item.slug)}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen(item.slug)}
+      className="rounded-xl p-4 flex flex-col gap-2 cursor-pointer active:opacity-80 transition-opacity"
       style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}
     >
       <div className="flex items-center justify-between">
@@ -253,9 +274,9 @@ function NewsCard({ item, t }) {
   );
 }
 
-function FeedTab({ t }) {
+function FeedTab({ t, news, loading, error, onOpen }) {
   return (
-    <div className="px-4 pt-4 pb-24 flex flex-col gap-3">
+    <div className="px-4 pt-4 pb-4 flex flex-col gap-3">
       <div className="mb-1">
         <h2 className="text-lg font-bold" style={{ color: T.text }}>
           {t.feedTitle}
@@ -264,9 +285,29 @@ function FeedTab({ t }) {
           {t.feedSub}
         </p>
       </div>
-      {NEWS.map((n) => (
-        <NewsCard key={n.id} item={n} t={t} />
-      ))}
+
+      {loading && <StateMessage icon={Loader2} spin text={t.loadingNews} />}
+      {!loading && error && <StateMessage icon={AlertTriangle} text={t.errorNews} tone="rose" />}
+      {!loading && !error && news.length === 0 && <StateMessage icon={Newspaper} text={t.emptyNews} />}
+
+      {!loading &&
+        !error &&
+        news.map((n) => <NewsCard key={n.id} item={n} t={t} onOpen={onOpen} />)}
+    </div>
+  );
+}
+
+function StateMessage({ icon: Icon, text, spin, tone }) {
+  const color = tone === "rose" ? T.rose : T.textMute;
+  return (
+    <div
+      className="rounded-xl p-6 flex flex-col items-center gap-2 text-center"
+      style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}
+    >
+      <Icon size={20} color={color} className={spin ? "animate-spin" : ""} />
+      <p className="text-xs" style={{ color: T.textSoft }}>
+        {text}
+      </p>
     </div>
   );
 }
@@ -361,7 +402,7 @@ function ChatTab({ t }) {
           </button>
         ))}
       </div>
-      <div className="px-4 pb-24 pt-1 flex items-center gap-2">
+      <div className="px-4 pb-4 pt-1 flex items-center gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -382,7 +423,7 @@ function ChatTab({ t }) {
   );
 }
 
-function CrewsTab({ t }) {
+function CrewsTab({ t, crews, loading, error }) {
   const [filter, setFilter] = useState("all");
   const platforms = [
     { id: "all", label: t.all },
@@ -390,10 +431,10 @@ function CrewsTab({ t }) {
     { id: "xbox", label: "Xbox" },
     { id: "pc", label: "PC" },
   ];
-  const filtered = filter === "all" ? CREWS : CREWS.filter((c) => c.platform === filter);
+  const filtered = filter === "all" ? crews : crews.filter((c) => c.platform === filter);
 
   return (
-    <div className="px-4 pt-4 pb-24 flex flex-col gap-3">
+    <div className="px-4 pt-4 pb-4 flex flex-col gap-3">
       <div className="mb-1">
         <h2 className="text-lg font-bold" style={{ color: T.text }}>
           {t.crewsTitle}
@@ -418,37 +459,46 @@ function CrewsTab({ t }) {
           </button>
         ))}
       </div>
-      {filtered.map((c) => (
-        <div
-          key={c.id}
-          className="rounded-xl p-4 flex items-center gap-3"
-          style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}
-        >
+      {loading && <StateMessage icon={Loader2} spin text={t.loadingCrews} />}
+      {!loading && error && <StateMessage icon={AlertTriangle} text={t.errorCrews} tone="rose" />}
+      {!loading && !error && filtered.length === 0 && <StateMessage icon={Users} text={t.emptyCrews} />}
+
+      {!loading &&
+        !error &&
+        filtered.map((c) => (
           <div
-            className="h-11 w-11 rounded-lg flex items-center justify-center shrink-0"
-            style={{ backgroundColor: T.surfaceAlt }}
+            key={c.id}
+            className="rounded-xl p-4 flex items-center gap-3"
+            style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}
           >
-            <Gamepad2 size={20} color={T.indigo} />
+            <div
+              className="h-11 w-11 rounded-lg flex items-center justify-center shrink-0"
+              style={{ backgroundColor: T.surfaceAlt }}
+            >
+              <Gamepad2 size={20} color={T.indigo} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: T.text }}>
+                {c.name}
+              </p>
+              <p className="text-xs truncate" style={{ color: T.textMute }}>
+                {c.desc}
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: T.textSoft, fontFamily: "'JetBrains Mono', monospace" }}>
+                {c.members.toLocaleString()} {t.members}
+              </p>
+            </div>
+            <a
+              href={c.inviteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold px-3 py-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: T.surfaceAlt, color: T.indigo, border: `1px solid ${T.indigo}50` }}
+            >
+              {t.join}
+            </a>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold" style={{ color: T.text }}>
-              {c.name}
-            </p>
-            <p className="text-xs truncate" style={{ color: T.textMute }}>
-              {c.desc}
-            </p>
-            <p className="text-[11px] mt-0.5" style={{ color: T.textSoft, fontFamily: "'JetBrains Mono', monospace" }}>
-              {c.members.toLocaleString()} {t.members}
-            </p>
-          </div>
-          <button
-            className="text-xs font-semibold px-3 py-1.5 rounded-full shrink-0"
-            style={{ backgroundColor: T.surfaceAlt, color: T.indigo, border: `1px solid ${T.indigo}50` }}
-          >
-            {t.join}
-          </button>
-        </div>
-      ))}
+        ))}
     </div>
   );
 }
@@ -473,7 +523,7 @@ function ProfileTab({ t, lang, setLang }) {
   const [notifs, setNotifs] = useState({ preorders: true, trailers: true, leaks: true });
 
   return (
-    <div className="px-4 pt-4 pb-24 flex flex-col gap-4">
+    <div className="px-4 pt-4 pb-4 flex flex-col gap-4">
       <h2 className="text-lg font-bold" style={{ color: T.text }}>
         {t.profileTitle}
       </h2>
@@ -567,10 +617,209 @@ function ProfileTab({ t, lang, setLang }) {
   );
 }
 
-export default function SixInsiderApp() {
-  const [lang, setLang] = useState("en");
+function NewsDetailPage({ lang }) {
+  const { slug } = useParams();
+  const navigate = useNavigate();
+  const t = COPY[lang];
+  const [item, setItem] = useState(null);
+  const [status, setStatus] = useState("loading"); // loading | done | notfound | error
+
+  useEffect(() => {
+    let active = true;
+    setStatus("loading");
+    (async () => {
+      let { data, error } = await supabase.from("news").select("*").eq("slug", slug).maybeSingle();
+      if (!data && !error) {
+        ({ data, error } = await supabase.from("news").select("*").eq("id", slug).maybeSingle());
+      }
+      if (!active) return;
+      if (error) {
+        setStatus("error");
+        return;
+      }
+      if (!data) {
+        setStatus("notfound");
+        return;
+      }
+      setItem(mapNewsRow(data, t));
+      setStatus("done");
+      document.title = `${data.title} — SIX//INSIDER`;
+    })();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug]);
+
+  return (
+    <div
+      className="w-full mx-auto flex flex-col"
+      style={{ maxWidth: 480, minHeight: "100dvh", backgroundColor: T.bg, fontFamily: "'Inter', sans-serif" }}
+    >
+      <div
+        className="flex items-center gap-2 px-4 pt-4 pb-3 shrink-0"
+        style={{ borderBottom: `1px solid ${T.borderSoft}` }}
+      >
+        <button
+          onClick={() => navigate("/")}
+          className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+          style={{ backgroundColor: T.surface, border: `1px solid ${T.borderSoft}` }}
+        >
+          <ArrowLeft size={16} color={T.textSoft} />
+        </button>
+        <p
+          className="text-sm font-extrabold tracking-tight"
+          style={{ color: T.text, fontFamily: "'JetBrains Mono', monospace" }}
+        >
+          SIX<span style={{ color: T.indigo }}>//</span>INSIDER
+        </p>
+      </div>
+
+      <div className="flex-1 px-4 py-5">
+        {status === "loading" && <StateMessage icon={Loader2} spin text={t.loadingNews} />}
+        {status === "error" && <StateMessage icon={AlertTriangle} text={t.errorNews} tone="rose" />}
+        {status === "notfound" && (
+          <div className="flex flex-col items-center text-center gap-3 py-10">
+            <AlertTriangle size={28} color={T.textMute} />
+            <h2 className="text-base font-bold" style={{ color: T.text }}>
+              {t.notFoundTitle}
+            </h2>
+            <p className="text-xs" style={{ color: T.textMute }}>
+              {t.notFoundDesc}
+            </p>
+            <button
+              onClick={() => navigate("/")}
+              className="mt-2 text-xs font-semibold px-4 py-2 rounded-full"
+              style={{ backgroundColor: T.indigo, color: "#fff" }}
+            >
+              {t.backToFeed}
+            </button>
+          </div>
+        )}
+        {status === "done" && item && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <Badge status={item.status} label={t.statuses[item.status]} />
+              {item.trending && (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold"
+                  style={{ color: T.indigo, fontFamily: "'JetBrains Mono', monospace" }}
+                >
+                  <Flame size={11} /> {t.trending}
+                </span>
+              )}
+            </div>
+            <h1 className="text-xl font-bold leading-snug" style={{ color: T.text }}>
+              {item.title}
+            </h1>
+            <div className="flex items-center justify-between text-xs" style={{ color: T.textMute }}>
+              <span>{item.source}</span>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{item.time}</span>
+            </div>
+            {(item.content || item.summary) && (
+              <p className="text-sm leading-relaxed" style={{ color: T.textSoft }}>
+                {item.content || item.summary}
+              </p>
+            )}
+            {item.sourceUrl && (
+              <a
+                href={item.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 text-xs font-semibold py-2.5 rounded-full mt-2"
+                style={{ backgroundColor: T.surface, color: T.indigo, border: `1px solid ${T.indigo}50` }}
+              >
+                <ExternalLink size={14} />
+                {t.openSource}
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function detectInitialLang() {
+  if (typeof window === "undefined") return "en";
+  const saved = window.localStorage.getItem("sixinsider_lang");
+  if (saved === "en" || saved === "pt") return saved;
+  const nav = (navigator.language || navigator.userLanguage || "en").toLowerCase();
+  return nav.startsWith("pt") ? "pt" : "en";
+}
+
+function MainShell({ lang, setLang }) {
   const [tab, setTab] = useState("feed");
   const t = COPY[lang];
+  const navigate = useNavigate();
+
+  const [news, setNews] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [newsError, setNewsError] = useState(false);
+
+  const [crews, setCrews] = useState([]);
+  const [crewsLoading, setCrewsLoading] = useState(true);
+  const [crewsError, setCrewsError] = useState(false);
+
+  // Fetch news once on mount. Re-fetched whenever the tab regains focus
+  // (visibilitychange) so the feed reflects new scraper output without
+  // requiring a full page reload.
+  useEffect(() => {
+    let active = true;
+    async function loadNews() {
+      setNewsLoading(true);
+      setNewsError(false);
+      const { data, error } = await supabase
+        .from("news")
+        .select("*")
+        .order("published_at", { ascending: false })
+        .limit(50);
+      if (!active) return;
+      if (error) {
+        setNewsError(true);
+      } else {
+        setNews((data || []).map((row) => mapNewsRow(row, t)));
+      }
+      setNewsLoading(false);
+    }
+    loadNews();
+    const onVisible = () => document.visibilityState === "visible" && loadNews();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadCrews() {
+      setCrewsLoading(true);
+      setCrewsError(false);
+      const { data, error } = await supabase
+        .from("crews")
+        .select("*")
+        .order("member_count", { ascending: false });
+      if (!active) return;
+      if (error) {
+        setCrewsError(true);
+      } else {
+        setCrews((data || []).map(mapCrewRow));
+      }
+      setCrewsLoading(false);
+    }
+    loadCrews();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("sixinsider_lang", lang);
+  }, [lang]);
+
+  const openNews = (slug) => navigate(`/news/${slug}`);
 
   const NAV = [
     { id: "feed", label: t.tabs.feed, icon: Newspaper },
@@ -584,7 +833,7 @@ export default function SixInsiderApp() {
       className="w-full mx-auto flex flex-col"
       style={{
         maxWidth: 480,
-        height: "100vh",
+        height: "100dvh",
         backgroundColor: T.bg,
         fontFamily: "'Inter', sans-serif",
         position: "relative",
@@ -629,20 +878,30 @@ export default function SixInsiderApp() {
         </div>
       </div>
 
-      <TickerBar t={t} />
+      <TickerBar t={t} news={news} />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {tab === "feed" && <FeedTab t={t} />}
+        {tab === "feed" && (
+          <FeedTab t={t} news={news} loading={newsLoading} error={newsError} onOpen={openNews} />
+        )}
         {tab === "chat" && <ChatTab t={t} />}
-        {tab === "crews" && <CrewsTab t={t} />}
+        {tab === "crews" && (
+          <CrewsTab t={t} crews={crews} loading={crewsLoading} error={crewsError} />
+        )}
         {tab === "profile" && <ProfileTab t={t} lang={lang} setLang={setLang} />}
       </div>
 
-      {/* Bottom nav */}
+      {/* Bottom nav — normal flex flow (not absolute), so it never
+          jumps when mobile browser chrome shows/hides and recalculates
+          viewport height. Sits naturally at the bottom of the column. */}
       <div
-        className="absolute bottom-0 left-0 right-0 flex items-center justify-around py-2 px-2"
-        style={{ backgroundColor: T.surface, borderTop: `1px solid ${T.borderSoft}` }}
+        className="shrink-0 flex items-center justify-around py-2 px-2"
+        style={{
+          backgroundColor: T.surface,
+          borderTop: `1px solid ${T.borderSoft}`,
+          paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))",
+        }}
       >
         {NAV.map((n) => {
           const Icon = n.icon;
@@ -665,5 +924,16 @@ export default function SixInsiderApp() {
         })}
       </div>
     </div>
+  );
+}
+
+export default function SixInsiderApp() {
+  const [lang, setLang] = useState(detectInitialLang);
+
+  return (
+    <Routes>
+      <Route path="/news/:slug" element={<NewsDetailPage lang={lang} />} />
+      <Route path="*" element={<MainShell lang={lang} setLang={setLang} />} />
+    </Routes>
   );
 }
